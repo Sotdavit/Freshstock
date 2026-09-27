@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Invoice — Fresh Stock Plus</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/layout.js"></script>
+<script>
+requireUserAuth();
+const content = renderUserShell('invoice', 'Invoice');
+content.innerHTML = `
+  <div class="panel">
+    <div class="empty-state" style="padding:60px 20px;">
+      <div style="font-size:32px;margin-bottom:10px;">🧾</div>
+      <strong>Invoice creation is coming in Phase 2</strong>
+      <p>This will let you build a multi-item invoice by product code, auto-calculate totals, deduct stock, and print/download as PDF.</p>
+      <p style="font-size:12.5px;">In the meantime, you can adjust stock manually from the <a href="/stock.html" style="color:var(--primary);font-weight:600;">Stock page</a>.</p>
+    </div>
+  </div>
+`;
+</script>
+</body>
+</html>

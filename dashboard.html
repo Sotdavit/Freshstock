@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dashboard — Fresh Stock Plus</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/layout.js"></script>
+<script>
+requireUserAuth();
+const content = renderUserShell('dashboard', 'Dashboard');
+content.innerHTML = `
+  <div class="cards-grid" id="cards-grid"></div>
+  <div class="panel">
+    <div class="panel-title">
+      Sales Overview
+      <select id="chart-range" class="field" style="width:auto;">
+        <option value="today">Today</option>
+        <option value="7d" selected>Last 7 Days</option>
+        <option value="30d">Last 30 Days</option>
+      </select>
+    </div>
+    <canvas id="sales-canvas" height="90"></canvas>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;" id="two-col">
+    <div class="panel">
+      <div class="panel-title">Low Stock Products</div>
+      <div id="low-stock-list"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Recent Invoices</div>
+      <div id="recent-invoices"></div>
+    </div>
+  </div>
+`;
+
+document.querySelector('#two-col').style.gridTemplateColumns = window.innerWidth < 900 ? '1fr' : '1fr 1fr';
+
+function cardHtml(icon, title, value, warning = false) {
+  return `
+    <div class="stat-card ${warning ? 'warning' : ''}">
+      <div class="stat-top">
+        <div class="stat-icon">${icon}</div>
+      </div>
+      <div class="stat-title">${title}</div>
+      <div class="stat-value">${value}</div>
+    </div>`;
+}
+
+async function loadSummary() {
+  try {
+    const s = await Api.dashboardSummary();
+    document.getElementById('cards-grid').innerHTML = [
+      cardHtml('📦', 'Total Stock', s.totalStock),
+      cardHtml('💰', 'Total Buy', fmtMoney(s.totalBuy)),
+      cardHtml('🧾', 'Total Sales', fmtMoney(s.totalSales)),
+      cardHtml('☀️', "Today's Sales", fmtMoney(s.todaySales)),
+      cardHtml('📈', "Today's Profit", fmtMoney(s.todayProfit)),
+      cardHtml('📆', 'Monthly Profit', fmtMoney(s.monthlyProfit)),
+      cardHtml('🛒', 'Monthly Buy', fmtMoney(s.monthlyBuy)),
+      cardHtml('💵', 'Monthly Sale', fmtMoney(s.monthlySales)),
+      cardHtml('⚠️', 'Low Stock Products', s.lowStockProducts.length, s.lowStockProducts.length > 0),
+    ].join('');
+
+    document.getElementById('low-stock-list').innerHTML = s.lowStockProducts.length
+      ? s.lowStockProducts.map((p) => `
+          <div class="low-stock-item">
+            <span>${escapeHtml(p.product_name)} <span style="color:var(--text-muted)">(${escapeHtml(p.product_code)})</span></span>
+            <span class="qty">${p.current_stock} ${escapeHtml(p.unit)}</span>
+          </div>`).join('')
+      : `<div class="empty-state">All products are well stocked 🎉</div>`;
+
+    document.getElementById('recent-invoices').innerHTML = s.recentInvoices.length
+      ? s.recentInvoices.map((inv) => `
+          <div class="low-stock-item">
+            <span>${escapeHtml(inv.invoice_number)}<br><span style="color:var(--text-muted);font-size:12px;">${fmtDateTime(inv.created_at)}</span></span>
+            <span style="font-weight:700;">${fmtMoney(inv.total)}</span>
+          </div>`).join('')
+      : `<div class="empty-state">No invoices yet. Create your first invoice!</div>`;
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+async function loadChart(range) {
+  try {
+    const data = await Api.dashboardChart({ range });
+    drawBarChart('sales-canvas', data.map(d => d.date), data.map(d => d.total));
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+function drawBarChart(canvasId, labels, values) {
+  const canvas = document.getElementById(canvasId);
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth || 600;
+  const height = 90;
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, width, height);
+
+  if (values.length === 0) {
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '13px sans-serif';
+    ctx.fillText('No sales data for this range yet.', 10, 45);
+    return;
+  }
+
+  const max = Math.max(...values, 1);
+  const barWidth = width / values.length;
+  ctx.fillStyle = '#16a34a';
+  values.forEach((v, i) => {
+    const barHeight = (v / max) * (height - 20);
+    ctx.fillRect(i * barWidth + 4, height - barHeight, barWidth - 8, barHeight);
+  });
+}
+
+document.getElementById('chart-range').addEventListener('change', (e) => loadChart(e.target.value));
+
+loadSummary();
+loadChart('7d');
+</script>
+</body>
+</html>

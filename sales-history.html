@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sales History — Fresh Stock Plus</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/layout.js"></script>
+<script>
+requireUserAuth();
+const content = renderUserShell('history', 'Sales History');
+content.innerHTML = `
+  <div class="panel">
+    <div class="empty-state" style="padding:60px 20px;">
+      <div style="font-size:32px;margin-bottom:10px;">🕘</div>
+      <strong>Sales History is coming in Phase 2</strong>
+      <p>This will list every completed invoice with search, filters by date/payment method/status, and daily/weekly/monthly reports.</p>
+    </div>
+  </div>
+`;
+</script>
+</body>
+</html>

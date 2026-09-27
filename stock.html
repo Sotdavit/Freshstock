@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Stock — Fresh Stock Plus</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/layout.js"></script>
+<script>
+requireUserAuth();
+const content = renderUserShell('stock', 'Stock Management');
+content.innerHTML = `
+  <div class="toolbar">
+    <div class="toolbar-left"></div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-secondary" id="buy-btn">📥 Stock Buy</button>
+      <button class="btn btn-secondary" id="sell-btn">📤 Stock Sell</button>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-title">Stock Summary</div>
+    <div class="toolbar"><input type="text" id="filter-input" class="search-input" placeholder="Filter by code or name..." /></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Code</th><th>Name</th><th>Buy Qty</th><th>Sell Qty</th><th>Current Stock</th><th>Buy Price</th><th>Sell Price</th></tr></thead>
+        <tbody id="summary-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+`;
+
+let summary = [];
+
+async function loadSummary() {
+  try {
+    summary = await Api.stockSummary();
+    renderSummary(summary);
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+function renderSummary(rows) {
+  const tbody = document.getElementById('summary-tbody');
+  if (rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">No products yet. Add products first.</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map((r) => `
+    <tr>
+      <td><strong>${escapeHtml(r.product_code)}</strong></td>
+      <td>${escapeHtml(r.product_name)}</td>
+      <td>${r.total_bought}</td>
+      <td>${r.total_sold}</td>
+      <td>${r.is_low_stock ? `<span class="badge badge-red">${r.current_stock} low</span>` : `<span class="badge badge-green">${r.current_stock}</span>`}</td>
+      <td>${fmtMoney(r.buy_price)}</td>
+      <td>${fmtMoney(r.sell_price)}</td>
+    </tr>
+  `).join('');
+}
+
+document.getElementById('filter-input').addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase();
+  renderSummary(summary.filter(r => r.product_code.toLowerCase().includes(q) || r.product_name.toLowerCase().includes(q)));
+});
+
+function codeLookupField(fieldPrefix) {
+  return `
+    <div class="field">
+      <label>Product Code *</label>
+      <input id="${fieldPrefix}-code" placeholder="e.g. P001" autocomplete="off" />
+      <div class="lookup-result" id="${fieldPrefix}-result"></div>
+      <input type="hidden" id="${fieldPrefix}-product-id" />
+    </div>`;
+}
+
+function wireCodeLookup(fieldPrefix, onFound) {
+  const input = document.getElementById(`${fieldPrefix}-code`);
+  const resultBox = document.getElementById(`${fieldPrefix}-result`);
+  let timer;
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const code = input.value.trim();
+    document.getElementById(`${fieldPrefix}-product-id`).value = '';
+    if (!code) { resultBox.classList.remove('visible'); return; }
+    timer = setTimeout(async () => {
+      try {
+        const p = await Api.lookupProduct(code);
+        resultBox.classList.add('visible');
+        resultBox.innerHTML = `<div class="name">${escapeHtml(p.product_name)}</div><div class="meta">Price: ${fmtMoney(p.sell_price)} · Stock: ${p.current_stock}</div>`;
+        document.getElementById(`${fieldPrefix}-product-id`).value = p.id;
+        onFound && onFound(p);
+      } catch {
+        resultBox.classList.add('visible');
+        resultBox.innerHTML = `<div class="meta" style="color:var(--danger)">Product not found.</div>`;
+      }
+    }, 300);
+  });
+}
+
+document.getElementById('buy-btn').addEventListener('click', () => {
+  const modal = showModal(`
+    <div class="modal-header"><h3>Stock Buy</h3><button class="modal-close" onclick="closeModal(this)">✕</button></div>
+    <form id="buy-form">
+      ${codeLookupField('buy')}
+      <div class="field-row">
+        <div class="field"><label>Quantity *</label><input id="buy-qty" type="number" min="1" required /></div>
+        <div class="field"><label>Buy Price *</label><input id="buy-price" type="number" step="0.01" min="0" required /></div>
+      </div>
+      <div class="field"><label>Supplier</label><input id="buy-supplier" /></div>
+      <div class="field"><label>Date</label><input id="buy-date" type="date" /></div>
+      <div class="field"><label>Note</label><textarea id="buy-note" rows="2"></textarea></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal(this)">Cancel</button>
+        <button type="submit" class="btn btn-primary">Confirm Purchase</button>
+      </div>
+    </form>
+  `);
+  wireCodeLookup('buy', (p) => { document.getElementById('buy-price').value = p.buy_price ?? ''; });
+
+  modal.querySelector('#buy-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const productId = document.getElementById('buy-product-id').value;
+    if (!productId) return toast('Please enter a valid product code first.', 'error');
+    try {
+      await Api.stockBuy({
+        productId,
+        quantity: Number(document.getElementById('buy-qty').value),
+        buyPrice: Number(document.getElementById('buy-price').value),
+        supplier: document.getElementById('buy-supplier').value.trim(),
+        date: document.getElementById('buy-date').value || undefined,
+        note: document.getElementById('buy-note').value.trim(),
+      });
+      toast('Stock updated successfully.', 'success');
+      modal.remove();
+      loadSummary();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+});
+
+document.getElementById('sell-btn').addEventListener('click', () => {
+  const modal = showModal(`
+    <div class="modal-header"><h3>Stock Sell</h3><button class="modal-close" onclick="closeModal(this)">✕</button></div>
+    <p style="font-size:12.5px;color:var(--text-muted);margin-top:-8px;">Tip: use the Invoice page to sell as part of a customer sale — this quick form is for manual stock adjustments.</p>
+    <form id="sell-form">
+      ${codeLookupField('sell')}
+      <div class="field"><label>Quantity *</label><input id="sell-qty" type="number" min="1" required /></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal(this)">Cancel</button>
+        <button type="submit" class="btn btn-primary">Confirm Sale</button>
+      </div>
+    </form>
+  `);
+  wireCodeLookup('sell');
+
+  modal.querySelector('#sell-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const productId = document.getElementById('sell-product-id').value;
+    if (!productId) return toast('Please enter a valid product code first.', 'error');
+    try {
+      await Api.stockSell({ productId, quantity: Number(document.getElementById('sell-qty').value) });
+      toast('Stock updated successfully.', 'success');
+      modal.remove();
+      loadSummary();
+    } catch (err) {
+      toast(err.message, 'error'); // will show "Insufficient stock." if applicable
+    }
+  });
+});
+
+loadSummary();
+</script>
+</body>
+</html>

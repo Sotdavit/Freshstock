@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Store Settings — Fresh Stock Plus</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/layout.js"></script>
+<script>
+requireUserAuth();
+const content = renderUserShell('store', 'Store Settings');
+content.innerHTML = `
+  <div class="panel" style="max-width:600px;">
+    <div class="panel-title">Store Logo</div>
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+      <img id="logo-preview" src="" style="width:72px;height:72px;border-radius:12px;object-fit:cover;background:var(--bg);display:none;border:1px solid var(--border);" />
+      <div>
+        <input type="file" id="logo-file" accept="image/*" />
+        <div style="margin-top:8px;">
+          <button class="btn btn-secondary btn-sm" id="upload-logo-btn">Upload</button>
+          <button class="btn btn-danger btn-sm" id="remove-logo-btn">Remove</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="max-width:600px;">
+    <div class="panel-title">Store Details</div>
+    <form id="store-form">
+      <div class="field"><label>Store Name</label><input id="s-name" /></div>
+      <div class="field"><label>Phone Number</label><input id="s-phone" /></div>
+      <div class="field"><label>Address</label><textarea id="s-address" rows="2"></textarea></div>
+      <div class="field"><label>Email</label><input id="s-email" type="email" /></div>
+      <div class="field-row">
+        <div class="field"><label>Currency</label>
+          <select id="s-currency">
+            <option value="USD">USD ($)</option>
+            <option value="KHR">KHR (៛)</option>
+            <option value="EUR">EUR (€)</option>
+          </select>
+        </div>
+        <div class="field"><label>Default Low Stock Threshold</label><input id="s-threshold" type="number" min="0" /></div>
+      </div>
+      <div class="field">
+        <label><input type="checkbox" id="s-tax-enabled" style="width:auto;display:inline;margin-right:6px;" /> Enable Tax / VAT</label>
+      </div>
+      <div class="field"><label>Tax Rate (%)</label><input id="s-tax-rate" type="number" step="0.01" min="0" /></div>
+      <div class="field"><label>Invoice Footer</label><textarea id="s-footer" rows="2" placeholder="e.g. Thank you for shopping with us!"></textarea></div>
+      <button type="submit" class="btn btn-primary" style="width:auto;">Save Store Settings</button>
+    </form>
+  </div>
+`;
+
+let currentStore = null;
+
+async function loadStore() {
+  try {
+    currentStore = await Api.getStore();
+    document.getElementById('s-name').value = currentStore.store_name || '';
+    document.getElementById('s-phone').value = currentStore.phone || '';
+    document.getElementById('s-address').value = currentStore.address || '';
+    document.getElementById('s-email').value = currentStore.email || '';
+    document.getElementById('s-currency').value = currentStore.currency || 'USD';
+    document.getElementById('s-threshold').value = currentStore.low_stock_threshold_default ?? 5;
+    document.getElementById('s-tax-enabled').checked = !!currentStore.tax_enabled;
+    document.getElementById('s-tax-rate').value = currentStore.tax_rate ?? 0;
+    document.getElementById('s-footer').value = currentStore.invoice_footer || '';
+    if (currentStore.logo_url) {
+      const img = document.getElementById('logo-preview');
+      img.src = `${API_BASE.replace('/api','')}${currentStore.logo_url}`;
+      img.style.display = 'block';
+    }
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+document.getElementById('store-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    await Api.updateStore({
+      storeName: document.getElementById('s-name').value.trim(),
+      phone: document.getElementById('s-phone').value.trim(),
+      address: document.getElementById('s-address').value.trim(),
+      email: document.getElementById('s-email').value.trim(),
+      currency: document.getElementById('s-currency').value,
+      lowStockThresholdDefault: Number(document.getElementById('s-threshold').value),
+      taxEnabled: document.getElementById('s-tax-enabled').checked,
+      taxRate: Number(document.getElementById('s-tax-rate').value),
+      invoiceFooter: document.getElementById('s-footer').value.trim(),
+    });
+    toast('Store settings saved.', 'success');
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+});
+
+document.getElementById('upload-logo-btn').addEventListener('click', async () => {
+  const file = document.getElementById('logo-file').files[0];
+  if (!file) return toast('Choose an image file first.', 'error');
+  const formData = new FormData();
+  formData.append('logo', file);
+  try {
+    const res = await Api.uploadLogo(formData);
+    const img = document.getElementById('logo-preview');
+    img.src = `${API_BASE.replace('/api','')}${res.logoUrl}`;
+    img.style.display = 'block';
+    toast('Logo uploaded.', 'success');
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+});
+
+document.getElementById('remove-logo-btn').addEventListener('click', async () => {
+  try {
+    await Api.removeLogo();
+    document.getElementById('logo-preview').style.display = 'none';
+    toast('Logo removed.', 'success');
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+});
+
+loadStore();
+</script>
+</body>
+</html>

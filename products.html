@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Products — Fresh Stock Plus</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/layout.js"></script>
+<script>
+requireUserAuth();
+const content = renderUserShell('products', 'Product Management');
+content.innerHTML = `
+  <div class="panel">
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <input type="text" id="search-input" class="search-input" placeholder="Search by code or name..." />
+        <input type="text" id="quick-code" placeholder="Quick code lookup (e.g. P001)" style="max-width:220px;" />
+      </div>
+      <button class="btn btn-primary" id="add-product-btn">+ Add Product</button>
+    </div>
+    <div id="quick-lookup-result" class="lookup-result"></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Code</th><th>Name</th><th>Category</th><th>Buy Price</th><th>Sell Price</th>
+            <th>Stock</th><th>Min</th><th>Unit</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="products-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+`;
+
+let allProducts = [];
+
+async function loadProducts(search = '') {
+  try {
+    const data = await Api.listProducts({ search, pageSize: 100 });
+    allProducts = data.products;
+    renderTable(allProducts);
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+function renderTable(products) {
+  const tbody = document.getElementById('products-tbody');
+  if (products.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state">No products found. Add your first product to get started.</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = products.map((p) => `
+    <tr>
+      <td><strong>${escapeHtml(p.product_code)}</strong></td>
+      <td>${escapeHtml(p.product_name)}</td>
+      <td>${escapeHtml(p.category || '—')}</td>
+      <td>${fmtMoney(p.buy_price)}</td>
+      <td>${fmtMoney(p.sell_price)}</td>
+      <td>${p.current_stock <= p.minimum_stock ? `<span class="badge badge-red">${p.current_stock}</span>` : p.current_stock}</td>
+      <td>${p.minimum_stock}</td>
+      <td>${escapeHtml(p.unit)}</td>
+      <td>
+        <button class="btn btn-secondary btn-sm" onclick="editProduct('${p.id}')">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="removeProduct('${p.id}', '${escapeHtml(p.product_name)}')">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+document.getElementById('search-input').addEventListener('input', (e) => loadProducts(e.target.value));
+
+// Quick code lookup — the "type P001, see product instantly" feature
+let lookupTimer;
+document.getElementById('quick-code').addEventListener('input', (e) => {
+  clearTimeout(lookupTimer);
+  const code = e.target.value.trim();
+  const box = document.getElementById('quick-lookup-result');
+  if (!code) { box.classList.remove('visible'); return; }
+  lookupTimer = setTimeout(async () => {
+    try {
+      const p = await Api.lookupProduct(code);
+      box.classList.add('visible');
+      box.innerHTML = `
+        <div class="name">${escapeHtml(p.product_name)}</div>
+        <div class="meta">Code: ${escapeHtml(p.product_code)} · Price: ${fmtMoney(p.sell_price)} · Available Stock: ${p.current_stock}</div>`;
+    } catch {
+      box.classList.add('visible');
+      box.innerHTML = `<div class="meta" style="color:var(--danger)">Product not found.</div>`;
+    }
+  }, 300);
+});
+
+function productFormHtml(p = {}) {
+  return `
+    <div class="field-row">
+      <div class="field"><label>Product Code *</label><input id="f-code" value="${escapeHtml(p.product_code || '')}" ${p.id ? 'disabled' : ''} /></div>
+      <div class="field"><label>Category</label><input id="f-category" value="${escapeHtml(p.category || '')}" /></div>
+    </div>
+    <div class="field"><label>Product Name *</label><input id="f-name" value="${escapeHtml(p.product_name || '')}" /></div>
+    <div class="field-row">
+      <div class="field"><label>Buy Price *</label><input id="f-buy" type="number" step="0.01" min="0" value="${p.buy_price ?? ''}" /></div>
+      <div class="field"><label>Sell Price *</label><input id="f-sell" type="number" step="0.01" min="0" value="${p.sell_price ?? ''}" /></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>${p.id ? 'Current Stock (view stock page to change)' : 'Initial Stock'}</label>
+        <input id="f-stock" type="number" min="0" value="${p.current_stock ?? 0}" ${p.id ? 'disabled' : ''} /></div>
+      <div class="field"><label>Minimum Stock</label><input id="f-min" type="number" min="0" value="${p.minimum_stock ?? 5}" /></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Unit</label><input id="f-unit" value="${escapeHtml(p.unit || 'pcs')}" /></div>
+    </div>
+    <div class="field"><label>Description</label><textarea id="f-desc" rows="2">${escapeHtml(p.description || '')}</textarea></div>
+  `;
+}
+
+document.getElementById('add-product-btn').addEventListener('click', () => openProductModal());
+
+function openProductModal(product) {
+  const modal = showModal(`
+    <div class="modal-header"><h3>${product ? 'Edit Product' : 'Add Product'}</h3><button class="modal-close" onclick="closeModal(this)">✕</button></div>
+    <form id="product-form">${productFormHtml(product || {})}
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal(this)">Cancel</button>
+        <button type="submit" class="btn btn-primary">${product ? 'Save Changes' : 'Add Product'}</button>
+      </div>
+    </form>
+  `);
+
+  modal.querySelector('#product-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = {
+      productCode: modal.querySelector('#f-code').value.trim(),
+      productName: modal.querySelector('#f-name').value.trim(),
+      category: modal.querySelector('#f-category').value.trim(),
+      buyPrice: Number(modal.querySelector('#f-buy').value),
+      sellPrice: Number(modal.querySelector('#f-sell').value),
+      minimumStock: Number(modal.querySelector('#f-min').value),
+      unit: modal.querySelector('#f-unit').value.trim() || 'pcs',
+      description: modal.querySelector('#f-desc').value.trim(),
+    };
+    try {
+      if (product) {
+        await Api.updateProduct(product.id, payload);
+        toast('Product updated successfully.', 'success');
+      } else {
+        payload.currentStock = Number(modal.querySelector('#f-stock').value) || 0;
+        await Api.createProduct(payload);
+        toast('Product added successfully.', 'success');
+      }
+      modal.remove();
+      loadProducts(document.getElementById('search-input').value);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+}
+
+function editProduct(id) {
+  const p = allProducts.find((x) => x.id === id);
+  if (p) openProductModal(p);
+}
+
+async function removeProduct(id, name) {
+  if (!confirm(`Delete product "${name}"? This cannot be undone.`)) return;
+  try {
+    await Api.deleteProduct(id);
+    toast('Product removed.', 'success');
+    loadProducts(document.getElementById('search-input').value);
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+loadProducts();
+</script>
+</body>
+</html>

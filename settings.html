@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Settings — Fresh Stock Plus</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/layout.js"></script>
+<script>
+const user = requireUserAuth();
+const content = renderUserShell('settings', 'Account Settings');
+content.innerHTML = `
+  <div class="panel" style="max-width:520px;">
+    <div class="panel-title">Profile</div>
+    <form id="profile-form">
+      <div class="field-row">
+        <div class="field"><label>First Name</label><input id="p-first" value="${escapeHtml(user.firstName || '')}" /></div>
+        <div class="field"><label>Last Name</label><input id="p-last" value="${escapeHtml(user.lastName || '')}" /></div>
+      </div>
+      <div class="field"><label>Phone Number</label><input id="p-phone" value="${escapeHtml(user.phone || '')}" /></div>
+      <div class="field">
+        <label>Language</label>
+        <select id="p-language">
+          <option value="en" ${user.language === 'en' ? 'selected' : ''}>English</option>
+          <option value="km" ${user.language === 'km' ? 'selected' : ''}>ខ្មែរ (Khmer)</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:auto;">Save Profile</button>
+    </form>
+  </div>
+
+  <div class="panel" style="max-width:520px;">
+    <div class="panel-title">Change Password</div>
+    <form id="password-form">
+      <div class="field"><label>Current Password</label><input id="p-current" type="password" required /></div>
+      <div class="field"><label>New Password</label><input id="p-new" type="password" required minlength="8" /></div>
+      <div class="field"><label>Confirm New Password</label><input id="p-confirm" type="password" required minlength="8" /></div>
+      <button type="submit" class="btn btn-primary" style="width:auto;">Change Password</button>
+    </form>
+  </div>
+`;
+
+document.getElementById('profile-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    const updated = await Api.updateProfile({
+      firstName: document.getElementById('p-first').value.trim(),
+      lastName: document.getElementById('p-last').value.trim(),
+      phone: document.getElementById('p-phone').value.trim(),
+      language: document.getElementById('p-language').value,
+    });
+    Auth.setUser({ ...user, ...{
+      firstName: updated.first_name, lastName: updated.last_name, phone: updated.phone, language: updated.language,
+    }});
+    toast('Profile updated.', 'success');
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+});
+
+document.getElementById('password-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const newPass = document.getElementById('p-new').value;
+  const confirm = document.getElementById('p-confirm').value;
+  if (newPass !== confirm) return toast('New passwords do not match.', 'error');
+  try {
+    await Api.changePassword({
+      currentPassword: document.getElementById('p-current').value,
+      newPassword: newPass,
+      confirmPassword: confirm,
+    });
+    toast('Password changed successfully.', 'success');
+    e.target.reset();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+});
+</script>
+</body>
+</html>

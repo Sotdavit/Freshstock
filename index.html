@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fresh Stock Plus — Login</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <img src="assets/logo.png" alt="Fresh Stock Plus" class="logo-image" />
+      <h1>Welcome to Fresh Stock Plus</h1>
+      <p>Made by Sot Davit — CEO</p>
+    </div>
+
+    <div id="alert-box"></div>
+
+    <!-- LOGIN FORM -->
+    <form id="login-form">
+      <div class="field">
+        <label>Phone Number</label>
+        <input type="text" id="login-phone" placeholder="e.g. 012 345 678" required />
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="login-password" placeholder="Your password" required />
+      </div>
+      <button type="submit" class="btn btn-primary" id="login-submit">Login</button>
+      <div class="auth-links">
+        <button type="button" class="btn-link" id="show-forgot">Forgot Password?</button>
+        &nbsp;·&nbsp;
+        <button type="button" class="btn-link" id="show-register">Create an account</button>
+      </div>
+    </form>
+
+    <!-- REGISTER FORM -->
+    <form id="register-form" style="display:none">
+      <div class="field-row">
+        <div class="field">
+          <label>First Name</label>
+          <input type="text" id="reg-first" required />
+        </div>
+        <div class="field">
+          <label>Last Name</label>
+          <input type="text" id="reg-last" required />
+        </div>
+      </div>
+      <div class="field">
+        <label>Phone Number</label>
+        <input type="text" id="reg-phone" required />
+      </div>
+      <div class="field">
+        <label>Email (optional)</label>
+        <input type="email" id="reg-email" />
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="reg-password" required minlength="8" />
+      </div>
+      <div class="field">
+        <label>Confirm Password</label>
+        <input type="password" id="reg-confirm" required minlength="8" />
+      </div>
+      <button type="submit" class="btn btn-primary" id="register-submit">Register</button>
+      <div class="auth-links">
+        Already have an account?
+        <button type="button" class="btn-link" id="show-login-from-register">Login</button>
+      </div>
+    </form>
+
+    <!-- FORGOT PASSWORD FORM -->
+    <form id="forgot-form" style="display:none">
+      <div class="field">
+        <label>Phone Number</label>
+        <input type="text" id="forgot-phone" required />
+      </div>
+      <button type="submit" class="btn btn-primary">Send Reset Code</button>
+      <div class="auth-links">
+        <button type="button" class="btn-link" id="show-login-from-forgot">Back to Login</button>
+      </div>
+    </form>
+
+    <!-- RESET PASSWORD FORM (shown after a reset code has been requested) -->
+    <form id="reset-form" style="display:none">
+      <div class="field">
+        <label>Reset Code</label>
+        <input type="text" id="reset-token" required />
+      </div>
+      <div class="field">
+        <label>New Password</label>
+        <input type="password" id="reset-password" required minlength="8" />
+      </div>
+      <div class="field">
+        <label>Confirm New Password</label>
+        <input type="password" id="reset-confirm" required minlength="8" />
+      </div>
+      <button type="submit" class="btn btn-primary">Reset Password</button>
+      <div class="auth-links">
+        <button type="button" class="btn-link" id="show-login-from-reset">Back to Login</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+<script src="js/ui.js"></script>
+<script>
+const forms = {
+  login: document.getElementById('login-form'),
+  register: document.getElementById('register-form'),
+  forgot: document.getElementById('forgot-form'),
+  reset: document.getElementById('reset-form'),
+};
+let forgotPhoneCache = '';
+
+function showForm(name) {
+  Object.values(forms).forEach((f) => f.style.display = 'none');
+  forms[name].style.display = 'block';
+  document.getElementById('alert-box').innerHTML = '';
+}
+
+function showAlert(message, type = 'error') {
+  document.getElementById('alert-box').innerHTML =
+    `<div class="alert alert-${type === 'error' ? 'error' : 'success'}">${escapeHtml(message)}</div>`;
+}
+
+document.getElementById('show-register').onclick = () => showForm('register');
+document.getElementById('show-login-from-register').onclick = () => showForm('login');
+document.getElementById('show-forgot').onclick = () => showForm('forgot');
+document.getElementById('show-login-from-forgot').onclick = () => showForm('login');
+document.getElementById('show-login-from-reset').onclick = () => showForm('login');
+
+// If already logged in, go straight to dashboard
+if (Auth.getToken() && Auth.getUser()?.role === 'USER') {
+  window.location.href = '/dashboard.html';
+}
+
+forms.login.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('login-submit');
+  btn.disabled = true;
+  try {
+    const data = await Api.login({
+      phone: document.getElementById('login-phone').value.trim(),
+      password: document.getElementById('login-password').value,
+    });
+    if (data.user.role !== 'USER') {
+      showAlert('This account is not a store user account.');
+      return;
+    }
+    Auth.setToken(data.token);
+    Auth.setUser({ ...data.user, storeId: data.storeId });
+    window.location.href = '/dashboard.html';
+  } catch (err) {
+    showAlert(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+forms.register.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('register-submit');
+  const password = document.getElementById('reg-password').value;
+  const confirm = document.getElementById('reg-confirm').value;
+  if (password !== confirm) return showAlert('Passwords do not match.');
+
+  btn.disabled = true;
+  try {
+    const data = await Api.register({
+      firstName: document.getElementById('reg-first').value.trim(),
+      lastName: document.getElementById('reg-last').value.trim(),
+      phone: document.getElementById('reg-phone').value.trim(),
+      email: document.getElementById('reg-email').value.trim() || undefined,
+      password,
+      confirmPassword: confirm,
+    });
+    Auth.setToken(data.token);
+    Auth.setUser({ ...data.user, storeId: data.storeId });
+    window.location.href = '/dashboard.html';
+  } catch (err) {
+    showAlert(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+forms.forgot.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const phone = document.getElementById('forgot-phone').value.trim();
+  try {
+    const data = await Api.forgotPassword({ phone });
+    forgotPhoneCache = phone;
+    showForm('reset');
+    let msg = data.message;
+    if (data.devResetToken) {
+      document.getElementById('reset-token').value = data.devResetToken;
+      msg += ' (Dev mode: code pre-filled below.)';
+    }
+    showAlert(msg, 'success');
+  } catch (err) {
+    showAlert(err.message);
+  }
+});
+
+forms.reset.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const password = document.getElementById('reset-password').value;
+  const confirm = document.getElementById('reset-confirm').value;
+  if (password !== confirm) return showAlert('Passwords do not match.');
+  try {
+    await Api.resetPassword({
+      phone: forgotPhoneCache,
+      token: document.getElementById('reset-token').value.trim(),
+      newPassword: password,
+      confirmPassword: confirm,
+    });
+    showForm('login');
+    showAlert('Password reset successfully. Please log in.', 'success');
+  } catch (err) {
+    showAlert(err.message);
+  }
+});
+</script>
+</body>
+</html>
